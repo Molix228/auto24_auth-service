@@ -8,7 +8,11 @@ import { deserialize } from 'v8';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: `.env.${process.env.NODE_ENV}`,
+      ignoreEnvFile: process.env.NODE_ENV === 'production',
+    }),
     CacheModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
@@ -17,23 +21,15 @@ import { deserialize } from 'v8';
         const redisUser = configService.get<string>('REDIS_USER');
         const redisPassword = configService.get<string>('REDIS_PASSWORD');
         const redisTtl = configService.get<number>('REDIS_TTL');
-
-        console.log(`[CacheModule Init] REDIS_HOST: ${redisHost}`);
-        console.log(`[CacheModule Init] REDIS_PORT: ${redisPort}`);
-        console.log(`[CacheModule Init] REDIS_USER: ${redisUser}`);
-        console.log(
-          `[CacheModule Init] REDIS_PASSWORD: ${redisPassword ? '***' : 'N/A'}`,
-        ); // Не логируйте пароль
-        console.log(`[CacheModule Init] REDIS_TTL: ${redisTtl}`);
         // -----------------------
 
         return {
           store: redisStore,
-          host: redisHost || 'localhost',
-          port: parseInt(redisPort ?? '6379', 10),
+          host: redisHost,
+          port: parseInt(redisPort!, 10),
           username: redisUser,
           password: redisPassword,
-          ttl: redisTtl || 3600,
+          ttl: redisTtl,
           enableOfflineQueue: false,
         };
       },

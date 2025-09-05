@@ -16,24 +16,12 @@ export class AuthController {
 
   @MessagePattern('user.register')
   async register(@Payload() createUserDto: CreateUserDto) {
-    Logger.debug(`[user.register] Received final payload:`, createUserDto);
-    Logger.debug(
-      `[user.register] Type of final payload: ${typeof createUserDto}`,
-    );
-    Logger.debug(
-      `[user.register] Payload instanceof CreateUserDto: ${createUserDto instanceof CreateUserDto}`,
-    );
     return await this.authService.register(createUserDto);
   }
 
   @MessagePattern('user.login')
   async login(@Payload() loginUserDto: LoginUserDto) {
     return await this.authService.login(loginUserDto);
-  }
-
-  @MessagePattern('auth.validate-token')
-  async handleValidateToken(@Payload() token: string) {
-    return await this.authService.validateToken(token);
   }
 
   @MessagePattern('user.get-profile')
@@ -50,5 +38,20 @@ export class AuthController {
   async handleUpdateProfile(@Payload() updateUserDto: UpdateUserProfile) {
     const { id, ...dataToUpdate } = updateUserDto;
     return await this.authService.updateProfile(id, dataToUpdate);
+  }
+
+  @MessagePattern('auth.validate-token')
+  async handleValidateToken(@Payload() token: string) {
+    return await this.authService.validateToken(token);
+  }
+
+  @MessagePattern('auth.validate-refresh-token')
+  async handleValidateRefreshToken(@Payload() token: string) {
+    return await this.authService.validateRefreshToken(token);
+  }
+
+  @MessagePattern('auth.refresh-access-token')
+  async handleRefreshAccessToken(@Payload() id: string) {
+    return await this.authService.refreshAccessToken(id);
   }
 }

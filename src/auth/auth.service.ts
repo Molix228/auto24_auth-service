@@ -18,8 +18,9 @@ import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { LoginResponse } from './types/login-response.interface';
 import { SafeUser } from './types/safe-user.interface';
-import { JwtPayload } from './types/jwt-payload.interface';
 import { UpdateUserProfile } from 'src/dto/update-user.dto';
+import { ConfigType } from '@nestjs/config';
+import refreshJwtConfig from './configs/refresh-jwt.config';
 
 @Injectable()
 export class AuthService {
@@ -27,7 +28,8 @@ export class AuthService {
   constructor(
     private readonly userRepository: UserRepository,
     private readonly jwtService: JwtService,
-    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    @Inject(CACHE_MANAGER)
+    private cacheManager: Cache,
   ) {}
 
   async checkExistingUser(username: string) {
@@ -112,10 +114,13 @@ export class AuthService {
       sub: user.id,
       username: user.username,
     };
-    const accessToken = this.jwtService.sign(payload);
+    const accessToken = await this.jwtService.signAsync(payload);
+    const refreshToken = await this.jwtService.signAsync(payload);
+    console.log(refreshToken);
 
     return {
       accessToken,
+      refreshToken,
       user: {
         id: user.id,
         username: user.username,
@@ -130,6 +135,24 @@ export class AuthService {
     } catch (error) {
       return { valid: false, userId: null, username: null };
     }
+  }
+
+  async validateRefreshToken(token: string) {
+    try {
+      const payload = await this.jwtService.verify(token);
+      return { valid: true, userId: payload.sub, username: payload.username };
+    } catch (err) {
+      return { valid: false, userId: null, username: null };
+    }
+  }
+
+  async refreshAccessToken(userId: string): Promise<string> {
+    const user = await this.userRepository.findById(userId);
+    if (!user) throw new UnauthorizedException('User not found');
+    const payload = { sub: userId };
+    const newAccessToken = await this.jwtService.signAsync(payload);
+
+    return newAccessToken;
   }
 
   async getUserProfile(id: string): Promise<SafeUser> {
@@ -156,7 +179,7 @@ export class AuthService {
         );
       const isDeleted = await this.userRepository.delete(id);
       if (!isDeleted)
-        throw new InternalServerErrorException('DB cannot delete the USER');
+        throw new InternalServerErrorException('USER cannot be deleted in DB');
       this.logger.log('Deleted!');
       return isDeleted;
     } catch (err) {

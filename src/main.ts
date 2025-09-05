@@ -11,10 +11,14 @@ async function bootstrap() {
       options: {
         client: {
           clientId: 'auth-service',
-          brokers: ['localhost:9092'],
+          brokers: [process.env.KAFKA_BROKER || ''],
+          connectionTimeout: 3000,
+          requestTimeout: 25000,
         },
         consumer: {
           groupId: 'auth-consumer-server',
+          sessionTimeout: 30000,
+          heartbeatInterval: 3000,
         },
       },
     },
