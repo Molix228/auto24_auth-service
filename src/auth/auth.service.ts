@@ -1,53 +1,37 @@
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import {
   ConflictException,
   Inject,
   Injectable,
   InternalServerErrorException,
-  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { Cache } from 'cache-manager';
 import { CreateUserDto } from 'src/dto/create-user.dto';
 import { User } from 'src/entities/user.entity';
-import { UserRepository } from 'src/auth/user.repository';
+import { UserRepository } from 'src/user/user.repository';
 import * as bcrypt from 'bcrypt';
 import { LoginUserDto } from 'src/dto/login-user.dto';
 import { QueryFailedError } from 'typeorm';
 import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { LoginResponse } from './types/login-response.interface';
-import { SafeUser } from './types/safe-user.interface';
-import { UpdateUserProfile } from 'src/dto/update-user.dto';
-import { ConfigType } from '@nestjs/config';
-import refreshJwtConfig from './configs/refresh-jwt.config';
+import { LoginResponse } from '../types/responses/login-response.interface';
+import { IAuthService } from 'src/interfaces';
+import {
+  ACCESS_JWT_SERVICE,
+  REFRESH_JWT_SERVICE,
+} from 'src/token-service/token-service.service';
 
 @Injectable()
-export class AuthService {
+export class AuthService implements IAuthService {
   private readonly logger = new Logger(AuthService.name);
   constructor(
     private readonly userRepository: UserRepository,
-    private readonly jwtService: JwtService,
-    @Inject(CACHE_MANAGER)
-    private cacheManager: Cache,
+    @Inject(ACCESS_JWT_SERVICE) private readonly accessJwtService: JwtService,
+    @Inject(REFRESH_JWT_SERVICE) private readonly refreshJwtService: JwtService,
   ) {}
 
-  async checkExistingUser(username: string) {
-    const cacheKey = `username:${username}`;
-    const cachedEmailExists = await this.cacheManager.get(cacheKey);
-    if (cachedEmailExists) {
-      throw new ConflictException('User already exists(from cache)');
-    }
-    const existingUser = await this.userRepository.findByUsername(username);
-    if (existingUser) {
-      await this.cacheManager.set(cacheKey, username, 3600);
-      throw new ConflictException('User already exists(from DB)');
-    }
-    return;
-  }
-
-  async register(createUserDto: CreateUserDto): Promise<User> {
-    const cacheKey = `username:${createUserDto.username}`;
+  async register(createUserDto: CreateUserDto): Promise<Partial<User>> {
+    // TO FIX: Caching logic to be fixed later
+    // const cacheKey = `username:${createUserDto.username}`;
 
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(createUserDto.password, salt);
@@ -58,23 +42,29 @@ export class AuthService {
         passwordHash,
         salt,
       });
+      this.logger.log('User registered:', newUser);
 
-      this.logger.debug(
-        `[AuthService] Attempting to set cache for key: ${cacheKey}`,
-      );
-      await this.cacheManager.set(cacheKey, createUserDto.username, 3600);
-      const redis_data = await this.cacheManager.get<User>(cacheKey);
-      this.logger.log('User from REDIS:', redis_data);
-      if (redis_data) {
-        this.logger.debug(
-          `[AuthService] Successfully set cache for key: ${JSON.stringify(redis_data)}`,
-        );
-        return redis_data;
-      }
+      // --- TO FIX: Caching logic to be fixed later ---
+      // this.logger.debug(
+      //   `[AuthService] Attempting to set cache for key: ${cacheKey}`,
+      // );
+      // await this.cacheManager.set(cacheKey, createUserDto.username, 3600);
+      // const redis_data = await this.cacheManager.get<User>(cacheKey);
+      // this.logger.log('User from REDIS:', redis_data);
+      // if (redis_data) {
+      //   this.logger.debug(
+      //     `[AuthService] Successfully set cache for key: ${JSON.stringify(redis_data)}`,
+      //   );
+      //   return redis_data;
+      // }
 
-      return newUser;
+      return {
+        id: newUser.id,
+        username: newUser.username,
+        email: newUser.email,
+      };
     } catch (error) {
-      // --- УЛУЧШЕННЫЕ ЛОГИ ОШИБОК ВНУТРИ СЕРВИСА ---
+      // --- IMPROVED BUG LOGS WITHIN THE SERVICE ---
       this.logger.error('[AuthService] ERROR in register method:', error);
       this.logger.error('[AuthService] Error message:', error.message);
       if (error instanceof QueryFailedError) {
@@ -86,8 +76,8 @@ export class AuthService {
           throw new ConflictException('User with such email already exists.');
         }
       }
-      // Перебрасываем как InternalServerErrorException, чтобы AllExceptionsFilter мог ее поймать
-      // и отправить обратно API Gateway (если используется send).
+      // Pass as InternalServerErrorException so that AllExceptionsFilter can catch it
+      // and send back the API Gateway (if send is used).
       throw new InternalServerErrorException(
         'Unable to register user due to unexpected error.',
         error.message,
@@ -114,9 +104,9 @@ export class AuthService {
       sub: user.id,
       username: user.username,
     };
-    const accessToken = await this.jwtService.signAsync(payload);
-    const refreshToken = await this.jwtService.signAsync(payload);
-    console.log(refreshToken);
+
+    const accessToken = await this.accessJwtService.signAsync(payload);
+    const refreshToken = await this.refreshJwtService.signAsync(payload);
 
     return {
       accessToken,
@@ -130,7 +120,7 @@ export class AuthService {
 
   async validateToken(token: string) {
     try {
-      const payload = await this.jwtService.verify(token);
+      const payload = await this.accessJwtService.verify(token);
       return { valid: true, userId: payload.sub, username: payload.username };
     } catch (error) {
       return { valid: false, userId: null, username: null };
@@ -139,7 +129,7 @@ export class AuthService {
 
   async validateRefreshToken(token: string) {
     try {
-      const payload = await this.jwtService.verify(token);
+      const payload = await this.refreshJwtService.verify(token);
       return { valid: true, userId: payload.sub, username: payload.username };
     } catch (err) {
       return { valid: false, userId: null, username: null };
@@ -150,70 +140,8 @@ export class AuthService {
     const user = await this.userRepository.findById(userId);
     if (!user) throw new UnauthorizedException('User not found');
     const payload = { sub: userId };
-    const newAccessToken = await this.jwtService.signAsync(payload);
+    const newAccessToken = await this.accessJwtService.signAsync(payload);
 
     return newAccessToken;
-  }
-
-  async getUserProfile(id: string): Promise<SafeUser> {
-    try {
-      const user = await this.userRepository.findById(id);
-      console.log(user);
-      if (!user) throw new NotFoundException('User Not Found [PostgreSQL]');
-      const { passwordHash, salt, ...safeUser } = user;
-      return safeUser;
-    } catch (error) {
-      throw new InternalServerErrorException(
-        'User cannot be found [PostgreSQL]',
-        error.message,
-      );
-    }
-  }
-
-  async deleteUser(id: string): Promise<boolean> {
-    try {
-      const user = await this.userRepository.findById(id);
-      if (!user)
-        throw new NotFoundException(
-          `User with ID: ${id} not found [PostgreSQL]`,
-        );
-      const isDeleted = await this.userRepository.delete(id);
-      if (!isDeleted)
-        throw new InternalServerErrorException('USER cannot be deleted in DB');
-      this.logger.log('Deleted!');
-      return isDeleted;
-    } catch (err) {
-      throw new InternalServerErrorException(
-        'Something went wrong',
-        err.message,
-      );
-    }
-  }
-
-  async updateProfile(
-    id: string,
-    dataToUpdate: Partial<UpdateUserProfile>,
-  ): Promise<SafeUser> {
-    try {
-      const updatedUser = await this.userRepository.update(id, dataToUpdate);
-
-      if (!updatedUser) {
-        throw new NotFoundException(
-          `User with ID: ${id} not found [PostgreSQL]`,
-        );
-      }
-
-      const { passwordHash, salt, ...safeUser } = updatedUser;
-      return safeUser;
-    } catch (err) {
-      if (err instanceof NotFoundException) {
-        throw err;
-      }
-
-      throw new InternalServerErrorException(
-        'Something went wrong',
-        err.message,
-      );
-    }
   }
 }

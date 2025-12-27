@@ -1,35 +1,14 @@
 import { Module } from '@nestjs/common';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { UserRepository } from './user.repository';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { User } from 'src/entities/user.entity';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { PassportModule } from '@nestjs/passport';
-import { JwtModule } from '@nestjs/jwt';
-import jwtConfig from './configs/jwt.config';
-import refreshJwtConfig from './configs/refresh-jwt.config';
+import { UserModule } from 'src/user/user.module';
+import { PasswordHashingModule } from 'src/password-hashing/password-hashing.module';
+import { TokenServiceModule } from 'src/token-service/token-service.module';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([User]),
-    ConfigModule,
-    ConfigModule.forFeature(jwtConfig),
-    ConfigModule.forFeature(refreshJwtConfig),
-    PassportModule,
-    JwtModule.registerAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_SECRET'),
-        signOptions: {
-          expiresIn: config.get<string>('JWT_EXPIRATION'),
-        },
-      }),
-    }),
-  ],
+  imports: [UserModule, PasswordHashingModule, TokenServiceModule],
   controllers: [AuthController],
-  providers: [AuthService, UserRepository],
+  providers: [AuthService],
   exports: [AuthService],
 })
 export class AuthModule {}

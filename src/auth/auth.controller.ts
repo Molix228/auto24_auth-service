@@ -9,35 +9,14 @@ import { UpdateUserProfile } from 'src/dto/update-user.dto';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  @MessagePattern('user.exists')
-  async checkUserExists(@Payload() username: string) {
-    return await this.authService.checkExistingUser(username);
-  }
-
-  @MessagePattern('user.register')
+  @MessagePattern('auth.register')
   async register(@Payload() createUserDto: CreateUserDto) {
     return await this.authService.register(createUserDto);
   }
 
-  @MessagePattern('user.login')
+  @MessagePattern('auth.login')
   async login(@Payload() loginUserDto: LoginUserDto) {
     return await this.authService.login(loginUserDto);
-  }
-
-  @MessagePattern('user.get-profile')
-  async handleGetProfile(@Payload() id: string) {
-    return await this.authService.getUserProfile(id);
-  }
-
-  @MessagePattern('user.deletebyid')
-  async handleDeleteUser(@Payload() id: string) {
-    return await this.authService.deleteUser(id);
-  }
-
-  @MessagePattern('user.update-profile')
-  async handleUpdateProfile(@Payload() updateUserDto: UpdateUserProfile) {
-    const { id, ...dataToUpdate } = updateUserDto;
-    return await this.authService.updateProfile(id, dataToUpdate);
   }
 
   @MessagePattern('auth.validate-token')

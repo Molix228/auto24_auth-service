@@ -15,7 +15,7 @@ export class UserRepository {
 
   async findById(sub: string): Promise<User | null> {
     try {
-      console.log(`[UserRepository] Request to PostgreSQL: findById(${sub})`);
+      console.log(`[UserRepository] Request to PostgreSQL: findById()`);
       return await this.userRepository.findOne({ where: { id: sub } });
     } catch (error) {
       throw new InternalServerErrorException(
@@ -27,9 +27,7 @@ export class UserRepository {
 
   async findByUsername(username: string): Promise<User | null> {
     try {
-      console.log(
-        `[UserRepository] Request to PostgreSQL: findByUsername(${username})`,
-      );
+      console.log(`[UserRepository] Request to PostgreSQL: findByUsername()`);
       return await this.userRepository.findOne({
         where: { username: username },
       });
