@@ -4,9 +4,16 @@ import { AuthService } from './auth.service';
 import { UserModule } from 'src/user/user.module';
 import { PasswordHashingModule } from 'src/password-hashing/password-hashing.module';
 import { TokenServiceModule } from 'src/token-service/token-service.module';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { RefreshToken } from 'src/entities/token.entity';
 
 @Module({
-  imports: [UserModule, PasswordHashingModule, TokenServiceModule],
+  imports: [
+    TypeOrmModule.forFeature([RefreshToken]),
+    UserModule,
+    PasswordHashingModule,
+    TokenServiceModule,
+  ],
   controllers: [AuthController],
   providers: [AuthService],
   exports: [AuthService],
