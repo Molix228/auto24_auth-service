@@ -19,12 +19,16 @@ import {
   ACCESS_JWT_SERVICE,
   REFRESH_JWT_SERVICE,
 } from 'src/token-service/token-service.service';
+import { TokenRepository } from 'src/token-service/token.repository';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class AuthService implements IAuthService {
   private readonly logger = new Logger(AuthService.name);
   constructor(
     private readonly userRepository: UserRepository,
+    private readonly tokenRepository: TokenRepository,
+    private readonly configService: ConfigService,
     @Inject(ACCESS_JWT_SERVICE) private readonly accessJwtService: JwtService,
     @Inject(REFRESH_JWT_SERVICE) private readonly refreshJwtService: JwtService,
   ) {}
@@ -108,6 +112,24 @@ export class AuthService implements IAuthService {
     const accessToken = await this.accessJwtService.signAsync(payload);
     const refreshToken = await this.refreshJwtService.signAsync(payload);
 
+    try {
+      await this.tokenRepository.revokeAllUserTokens(user.id);
+      const expiresIn =
+        this.configService.get<string>('REFRESH_JWT_EXPIRATION') || '7d';
+
+      await this.tokenRepository.createToken(user.id, refreshToken, expiresIn);
+
+      this.logger.log(
+        `[AuthService] New refresh token stored for user: ${user.username}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        '[AuthService] Failed to store refreshToken',
+        error.stack,
+      );
+      throw new InternalServerErrorException('Error processing login');
+    }
+
     return {
       accessToken,
       refreshToken,
@@ -136,12 +158,42 @@ export class AuthService implements IAuthService {
     }
   }
 
-  async refreshAccessToken(userId: string): Promise<string> {
-    const user = await this.userRepository.findById(userId);
-    if (!user) throw new UnauthorizedException('User not found');
-    const payload = { sub: userId };
-    const newAccessToken = await this.accessJwtService.signAsync(payload);
+  async refreshAccessToken(token: string): Promise<any> {
+    const dbToken = await this.tokenRepository.findActiveToken(token);
 
-    return newAccessToken;
+    if (!dbToken) {
+      this.logger.warn(
+        `[AuthService] Attempt to use revoked or non-existent token`,
+      );
+      throw new UnauthorizedException('Refresh token is invalid');
+    }
+
+    if (new Date() > dbToken.expiresAt) {
+      throw new UnauthorizedException('Refresh token expired');
+    }
+
+    try {
+      const payload = await this.refreshJwtService.verifyAsync(token);
+      const newPayload = { sub: payload.sub, username: payload.username };
+      const accessToken = await this.accessJwtService.signAsync(newPayload);
+      return { accessToken };
+    } catch (error) {
+      this.logger.warn(
+        '[AuthService] JWT Verify failed during refresh',
+        error.message,
+      );
+      throw new UnauthorizedException('Invalid token signature');
+    }
+  }
+
+  async revokeToken(token: string): Promise<boolean> {
+    try {
+      await this.tokenRepository.revokeToken(token);
+      this.logger.log('[AuthService] Token successfully revoked.');
+      return true;
+    } catch (error) {
+      this.logger.error('[AuthService] Error revoking token', error.stack);
+      return false;
+    }
   }
 }

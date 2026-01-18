@@ -30,7 +30,12 @@ export class AuthController {
   }
 
   @MessagePattern('auth.refresh-access-token')
-  async handleRefreshAccessToken(@Payload() id: string) {
-    return await this.authService.refreshAccessToken(id);
+  async handleRefreshAccessToken(@Payload() token: string) {
+    return await this.authService.refreshAccessToken(token);
+  }
+
+  @MessagePattern('auth.revoke-token')
+  async handleRevokeToken(@Payload() token: string) {
+    return await this.authService.revokeToken(token);
   }
 }
