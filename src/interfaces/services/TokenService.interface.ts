@@ -1,4 +1,4 @@
-import { User } from 'src/entities';
+import { User } from 'src/entities/user.entity';
 import { TokenPair, TokenPayload } from 'src/types';
 
 export interface ITokenService {
